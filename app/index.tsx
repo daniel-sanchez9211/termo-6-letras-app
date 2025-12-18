@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
-import React, { useEffect } from 'react';
-import { Alert, SafeAreaView, StyleSheet, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
+import React from 'react';
+import { SafeAreaView, StyleSheet, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
 import { Keyboard } from '../components/Keyboard';
 import { Row } from '../components/Row';
 import { Colors } from '../constants/Colors';
@@ -12,17 +12,9 @@ export default function HomeScreen() {
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
 
     // Efeito para mostrar mensagem de vitoria/derrota
-    useEffect(() => {
-        if (status === 'won') {
-            Alert.alert('Parabéns!', 'Você acertou a palavra!', [
-                { text: 'Jogar Novamente', onPress: startNewGame }
-            ]);
-        } else if (status === 'lost') {
-            Alert.alert('Que pena!', `A palavra era: ${word}`, [
-                { text: 'Tentar Novamente', onPress: startNewGame }
-            ]);
-        }
-    }, [status]);
+    // Efeito para mostrar mensagem de vitoria/derrota
+    // (Removido Alert nativo conforme solicitado, usaremos apenas banners)
+    // useEffect(() => { ... }, [status]);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>

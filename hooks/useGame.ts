@@ -1,5 +1,6 @@
+
 import { useEffect, useState } from 'react';
-import { getRandomWord, WORDS_6_LETTERS } from '../constants/Words';
+import { getRandomWord, VALID_GUESSES } from '../constants/Words';
 
 export type CellState = 'empty' | 'filled' | 'correct' | 'present' | 'absent';
 
@@ -60,16 +61,34 @@ export const useGame = () => {
   };
 
   const addLetter = (letter: string) => {
-    if (currentColIndex >= WORD_LENGTH) return;
-
+    // Escreve na célula atual
     const newRows = [...rows];
     newRows[currentRowIndex][currentColIndex] = { letter: letter.toUpperCase(), state: 'filled' };
     setRows(newRows);
     
-    // Move para a proxima celula vazia se houver, ou a seguinte
-    // Simplificação: apenas avança 1
-    const nextIndex = currentColIndex + 1;
-    if (nextIndex <= WORD_LENGTH) setCurrentColIndex(nextIndex);
+    // Busca próximo slot vazio (Search Forward)
+    let nextIndex = currentColIndex;
+    let foundEmpty = false;
+    
+    // Testa as próximas posições (até dar a volta completa)
+    for (let i = 1; i < WORD_LENGTH; i++) {
+        const candidateIndex = (currentColIndex + i) % WORD_LENGTH;
+        const candidateCell = newRows[currentRowIndex][candidateIndex];
+        
+        // Se estiver vazia (sem letra definida), é o nosso alvo
+        if (!candidateCell.letter || candidateCell.state === 'empty') {
+            nextIndex = candidateIndex;
+            foundEmpty = true;
+            break; 
+        }
+    }
+    
+    // Se encontrou vazio, move o cursor.
+    // Se NÃO encontrou (palavra cheia), mantem onde está (currentColIndex),
+    // permitindo que o usuário sobrescreva a letra atual se continuar digitando.
+    if (foundEmpty) {
+        setCurrentColIndex(nextIndex);
+    }
   };
 
   const deleteLetter = () => {
@@ -96,26 +115,37 @@ export const useGame = () => {
   };
 
   const submitRow = () => {
-    // Check length
+    // Normalização para comparar sem acentos
+    const normalize = (str: string) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
     const currentGuess = rows[currentRowIndex].map(cell => cell.letter).join('');
+    
+    // Check length
     if (currentGuess.length < WORD_LENGTH || currentGuess.includes(' ')) {
       triggerInvalidAnimation();
       return;
     }
 
-    // Valida se palavra existe
-    if (!WORDS_6_LETTERS.includes(currentGuess)) {
+    // Valida se palavra existe na lista de PALPITES (mais ampla)
+    const validWordEntry = VALID_GUESSES.find(w => normalize(w) === currentGuess);
+
+    if (!validWordEntry) {
        triggerInvalidAnimation(); 
        return; 
     }
 
     const newRows = [...rows];
-    const solutionChars = word.split('');
+    // Usa a palavra da lista (com acentos) para pintar o grid corretamente? 
+    // NÃO. O Termo original mantem o que o usuario digitou (sem acento)
+    // Mas a validação de cores deve usar a palavra secreta (com acentos) normalizada
+    
+    const secretNormalized = normalize(word);
+    const solutionChars = secretNormalized.split('');
     
     // 1. Identificar corretos (Verde)
     const currentRow = newRows[currentRowIndex].map((cell, i) => {
       if (cell.letter === solutionChars[i]) {
-        solutionChars[i] = '#'; // Remove para não contar novamente como amarelo
+        solutionChars[i] = '#'; 
         return { ...cell, state: 'correct' as CellState };
       }
       return cell;
@@ -127,7 +157,7 @@ export const useGame = () => {
 
       const indexInSolution = solutionChars.indexOf(cell.letter);
       if (indexInSolution > -1) {
-        solutionChars[indexInSolution] = '#'; // Remove
+        solutionChars[indexInSolution] = '#'; 
         return { ...cell, state: 'present' as CellState };
       } else {
         return { ...cell, state: 'absent' as CellState };
@@ -137,8 +167,8 @@ export const useGame = () => {
     newRows[currentRowIndex] = finalRow;
     setRows(newRows);
 
-    // Verificar vitoria/derrota
-    if (currentGuess === word) {
+    // Verificar vitoria/derrota (compara normalizado)
+    if (currentGuess === secretNormalized) {
       setStatus('won');
     } else if (currentRowIndex >= MAX_ATTEMPTS - 1) {
       setStatus('lost');
