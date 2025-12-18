@@ -1,57 +1,89 @@
 const fs = require('fs');
 
-const inputFile = 'words_raw.txt';
+const rawFile = 'words_raw.txt';
+const hugeFile = 'words_huge.txt';
 const outputFile = 'constants/Words.ts';
 
 try {
-  const data = fs.readFileSync(inputFile, 'utf8');
-  
-  // RAW processamento para identificar nomes
-  const rawLines = data.split('\n').map(w => w.trim()).filter(w => w);
+  console.log('Lendo arquivos...');
+  const dataRaw = fs.readFileSync(rawFile, 'utf8');
+  const dataHuge = fs.readFileSync(hugeFile, 'utf8');
 
-  // Filtro de Nomes: Se começa com Maiúscula, rejeita (assumindo formato do arquivo raw)
-  // Ex: "Vivian" (rejeita), "banana" (aceita)
-  const commonWords = rawLines.filter(w => {
-      // Rejeita se começar com A-Z ou acentuada maiúscula
-      if (/^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]/.test(w)) return false;
-      return true;
+  // 1. Construir Blacklist de Nomes Próprios usando words_raw (que tem capitalização)
+  // Se uma palavra aparece APENAS capitalizada em words_raw, ela é um nome.
+  // Se aparece minúscula também (ou apenas), é comum.
+  
+  const rawLines = dataRaw.split('\n').map(w => w.trim()).filter(w => w);
+  
+  const knownLower = new Set();
+  const knownUpperOnly = new Set();
+  
+  rawLines.forEach(w => {
+      const lower = w.toLowerCase();
+      // Verifica se começa com maiúscula (considerando acentos)
+      const isCapitalized = /^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]/.test(w);
+      
+      if (!isCapitalized) {
+          knownLower.add(lower);
+          // Se já estava na lista de "apenas Upper", remove, pois existe em lower também
+          if (knownUpperOnly.has(lower)) {
+              knownUpperOnly.delete(lower);
+          }
+      } else {
+          // É capitalizado. Só adiciona como UpperOnly se NÃO for conhecida em lower
+          if (!knownLower.has(lower)) {
+              knownUpperOnly.add(lower);
+          }
+      }
+  });
+  
+  console.log(`Blacklist de nomes gerada: ${knownUpperOnly.size} nomes únicos.`);
+
+  // 2. Processar a lista HUGE (que é toda lowercase)
+  const hugeLines = dataHuge.split('\n').map(w => w.trim().toLowerCase()).filter(w => w);
+  
+  // Criar Set de palavras de 5 letras (da lista HUGE) para detecção de plural
+  const words5 = new Set();
+  hugeLines.forEach(w => {
+      if (w.length === 5 && /^[a-zà-ú]+$/.test(w)) {
+          words5.add(w);
+      }
   });
 
-  const allWords = commonWords.map(w => w.toUpperCase());
-
-  // 1. Criar Set de palavras de 5 letras para detecção de plural
-  const words5 = new Set(allWords.filter(w => w.length === 5));
-
   // Duas listas: 
-  // validGuesses = Todas as palavras válidas de 6 letras (incluindo plurais)
-  // secretWords = Apenas palavras "boas" para serem a resposta (sem plurais simples)
   const validGuesses = [];
   const secretWords = [];
 
-  // Filtrar palavras de 6 letras
-  allWords.forEach(w => {
+  // 3. Filtrar palavras de 6 letras da lista HUGE
+  hugeLines.forEach(w => {
     if (w.length !== 6) return;
     
-    // Filtro básico de caracteres inválidos
-    if (!/^[A-ZÀ-Ú]+$/.test(w)) return;
+    // Filtro básico de caracteres inválidos (hífens, números, etc)
+    if (!/^[a-zà-ú]+$/.test(w)) return;
 
     // Regra anti-sigla/romanos
-    if (!/[AEIOUÁÉÍÓÚÂÊÔÃÕÜY]/.test(w)) return;
+    if (!/[aeiouáéíóúâêôãõüy]/.test(w)) return;
+    
+    // FILTRO DE NOMES: Checa blacklist
+    if (knownUpperOnly.has(w)) return;
+
+    // Upper para exportação
+    const upperW = w.toUpperCase();
 
     // Se chegou aqui, é um palpite válido
-    validGuesses.push(w);
+    validGuesses.push(upperW);
 
     // Agora verificamos se serve como segredo (filtra plurais)
     let isSimplePlural = false;
-    if (w.endsWith('S')) {
-      const singular = w.slice(0, -1);
+    if (upperW.endsWith('S')) {
+      const singular = w.slice(0, -1); // w é lower, singular lower
       if (words5.has(singular)) {
         isSimplePlural = true;
       }
     }
 
     if (!isSimplePlural) {
-        secretWords.push(w);
+        secretWords.push(upperW);
     }
   });
 
