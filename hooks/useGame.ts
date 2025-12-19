@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react';
-import { getRandomWord, VALID_GUESSES } from '../constants/Words';
+import { getRandomWord, WORDS } from '../constants/Words';
 
 export type CellState = 'empty' | 'filled' | 'correct' | 'present' | 'absent';
 
@@ -12,11 +12,12 @@ export type CellData = {
 export type GameStatus = 'playing' | 'won' | 'lost';
 
 const MAX_ATTEMPTS = 6;
-const WORD_LENGTH = 6;
 
-export const useGame = () => {
+export const useGame = (initialWordLength = 6) => {
+  const [wordLength, setWordLength] = useState(initialWordLength);
   const [word, setWord] = useState<string>('');
-  // Grid: Matriz de 6x6 tentativas
+  
+  // Grid: Matriz de 6x(wordLength) tentativas
   const [rows, setRows] = useState<CellData[][]>([]);
   
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
@@ -26,19 +27,23 @@ export const useGame = () => {
   // Novo estado para erro visual (shake/mensagem)
   const [invalidShake, setInvalidShake] = useState(false);
 
-  // Inicializa o jogo
+  // Inicializa o jogo quando muda o tamanho
   useEffect(() => {
-    startNewGame();
-  }, []);
+    startNewGame(wordLength);
+  }, [wordLength]);
 
-  const startNewGame = () => {
-    const newWord = getRandomWord();
-    console.log('Palavra Secreta:', newWord); // Para debug
+  const startNewGame = (length: number = wordLength) => {
+    // Garante que o length está atualizado no state se chamado externamente
+    if (length !== wordLength) setWordLength(length);
+    
+    // Pega palavra aleatoria do tamanho correto
+    const newWord = getRandomWord(length);
+    console.log(`Nova Palavra Secreta (${length}):`, newWord);
     setWord(newWord);
     
-    // Cria grid vazio
+    // Cria grid vazio dinâmico
     const emptyGrid = Array(MAX_ATTEMPTS).fill(null).map(() => 
-      Array(WORD_LENGTH).fill({ letter: '', state: 'empty' })
+      Array(length).fill({ letter: '', state: 'empty' })
     );
     setRows(emptyGrid);
     
@@ -61,7 +66,6 @@ export const useGame = () => {
   };
 
   const addLetter = (letter: string) => {
-    // Escreve na célula atual
     const newRows = [...rows];
     newRows[currentRowIndex][currentColIndex] = { letter: letter.toUpperCase(), state: 'filled' };
     setRows(newRows);
@@ -70,12 +74,11 @@ export const useGame = () => {
     let nextIndex = currentColIndex;
     let foundEmpty = false;
     
-    // Testa as próximas posições (até dar a volta completa)
-    for (let i = 1; i < WORD_LENGTH; i++) {
-        const candidateIndex = (currentColIndex + i) % WORD_LENGTH;
+    // Testa as próximas posições
+    for (let i = 1; i < wordLength; i++) {
+        const candidateIndex = (currentColIndex + i) % wordLength;
         const candidateCell = newRows[currentRowIndex][candidateIndex];
         
-        // Se estiver vazia (sem letra definida), é o nosso alvo
         if (!candidateCell.letter || candidateCell.state === 'empty') {
             nextIndex = candidateIndex;
             foundEmpty = true;
@@ -83,31 +86,21 @@ export const useGame = () => {
         }
     }
     
-    // Se encontrou vazio, move o cursor.
-    // Se NÃO encontrou (palavra cheia), mantem onde está (currentColIndex),
-    // permitindo que o usuário sobrescreva a letra atual se continuar digitando.
     if (foundEmpty) {
         setCurrentColIndex(nextIndex);
     }
   };
 
   const deleteLetter = () => {
-    // Se estiver no final (indice 6), volta pro 5. Se estiver no 0, nao faz nada.
-    // Lógica ajustada para apagar a letra na posicao ANTERIOR ao cursor, igual editores de texto
-    const indexToDelete = currentColIndex > 0 && currentColIndex === WORD_LENGTH 
+    // Lógica ajustada para usar wordLength variavel
+    const indexToDelete = currentColIndex > 0 && currentColIndex === wordLength 
         ? currentColIndex - 1 
         : currentColIndex > 0 ? currentColIndex - 1 : 0;
         
-    // Se o cursor estiver numa posição vazia, apaga a anterior.
-    // Se estiver em cima de uma letra preenchida (seleção manual), apaga ela.
-    
     const newRows = [...rows];
-    // Se a célula atual já tem letra (por seleção manual), apaga ela
     if (newRows[currentRowIndex][currentColIndex]?.letter) {
          newRows[currentRowIndex][currentColIndex] = { letter: '', state: 'empty' };
-         // Mantem cursor
     } else if (currentColIndex > 0) {
-        // Comportamento padrao backspace
         newRows[currentRowIndex][currentColIndex - 1] = { letter: '', state: 'empty' };
         setCurrentColIndex(prev => prev - 1);
     }
@@ -115,19 +108,19 @@ export const useGame = () => {
   };
 
   const submitRow = () => {
-    // Normalização para comparar sem acentos
     const normalize = (str: string) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     const currentGuess = rows[currentRowIndex].map(cell => cell.letter).join('');
     
     // Check length
-    if (currentGuess.length < WORD_LENGTH || currentGuess.includes(' ')) {
+    if (currentGuess.length < wordLength || currentGuess.includes(' ')) {
       triggerInvalidAnimation();
       return;
     }
 
-    // Valida se palavra existe na lista de PALPITES (mais ampla)
-    const validWordEntry = VALID_GUESSES.find(w => normalize(w) === currentGuess);
+    // Valida no dicionário correto
+    const validList = WORDS[wordLength]?.validGuesses || [];
+    const validWordEntry = validList.find(w => normalize(w) === currentGuess);
 
     if (!validWordEntry) {
        triggerInvalidAnimation(); 
@@ -135,9 +128,6 @@ export const useGame = () => {
     }
 
     const newRows = [...rows];
-    // Usa a palavra da lista (com acentos) para pintar o grid corretamente? 
-    // NÃO. O Termo original mantem o que o usuario digitou (sem acento)
-    // Mas a validação de cores deve usar a palavra secreta (com acentos) normalizada
     
     const secretNormalized = normalize(word);
     const solutionChars = secretNormalized.split('');
@@ -151,7 +141,7 @@ export const useGame = () => {
       return cell;
     });
 
-    // 2. Identificar presentes em lugar errado (Amarelo) e Ausentes (Cinza)
+    // 2. Identificar presentes (Amarelo)
     const finalRow = currentRow.map((cell) => {
       if (cell.state === 'correct') return cell;
 
@@ -167,7 +157,6 @@ export const useGame = () => {
     newRows[currentRowIndex] = finalRow;
     setRows(newRows);
 
-    // Verificar vitoria/derrota (compara normalizado)
     if (currentGuess === secretNormalized) {
       setStatus('won');
     } else if (currentRowIndex >= MAX_ATTEMPTS - 1) {
@@ -178,30 +167,23 @@ export const useGame = () => {
     }
   };
 
-  // Animação/Feedback visual de erro
   const triggerInvalidAnimation = () => {
     setInvalidShake(true);
     setTimeout(() => setInvalidShake(false), 500);
   };
 
-  // Selecionar célula manualmente
   const selectCell = (index: number) => {
       if (status !== 'playing') return;
-      if (index < WORD_LENGTH && index >= 0) {
+      if (index < wordLength && index >= 0) {
           setCurrentColIndex(index);
       }
   };
 
-  // Calcula cores das teclas para o teclado
   const getKeyStyles = () => {
     const keys: Record<string, CellState> = {};
-    
-    // Varre todas as linhas JÁ SUBMETIDAS (menores que a atual)
     rows.slice(0, currentRowIndex).forEach(row => {
       row.forEach(cell => {
         const currentColor = keys[cell.letter];
-        
-        // Prioridade de Cores: Verde > Amarelo > Cinza
         if (cell.state === 'correct') {
           keys[cell.letter] = 'correct';
         } else if (cell.state === 'present' && currentColor !== 'correct') {
@@ -220,8 +202,10 @@ export const useGame = () => {
     currentColIndex,
     status,
     word,
+    wordLength,          // Exporta o tamanho atual
+    setWordLength: startNewGame, // Função para trocar de tamanho (inicia novo jogo)
     handleKeyPress,
-    startNewGame,
+    startNewGame: () => startNewGame(wordLength), // Reinicia com mesmo tamanho
     keyStates: getKeyStyles(),
     selectCell,
     invalidShake

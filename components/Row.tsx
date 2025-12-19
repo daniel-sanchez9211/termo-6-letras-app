@@ -8,15 +8,17 @@ type RowProps = {
     isActive?: boolean;
     currentColIndex?: number;
     onSelectCell?: (index: number) => void;
+    cellSize: number;
 };
 
-export const Row = ({ cells, isActive, currentColIndex, onSelectCell }: RowProps) => {
+export const Row = ({ cells, isActive, currentColIndex, onSelectCell, cellSize }: RowProps) => {
     return (
         <View style={styles.row}>
             {cells.map((cell, index) => (
                 <Cell
                     key={index}
                     data={cell}
+                    size={cellSize}
                     isSelected={isActive && currentColIndex === index}
                     onPress={isActive && onSelectCell ? () => onSelectCell(index) : undefined}
                 />
